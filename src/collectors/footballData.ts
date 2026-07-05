@@ -12,7 +12,7 @@
 import { FIXTURE_LOOKAHEAD_DAYS, TRACKED_COMPETITIONS } from "@/lib/config";
 
 const BASE_URL = "https://api.football-data.org/v4";
-const RECENT_RESULTS_DAYS_BACK = 30;
+const RECENT_RESULTS_DAYS_BACK = 14; // enough for FORM_MATCH_COUNT recent games per team, keeps volume down
 
 export interface FdMatch {
   fdMatchId: number;

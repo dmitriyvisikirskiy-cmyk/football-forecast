@@ -3,18 +3,24 @@
 // into the final aggregated_predictions row per match. This is the function
 // the cron endpoint calls once a day.
 //
-// Timing note: Vercel Hobby caps function execution at 60s. football-data.org
-// fetches are the dominant cost (one request per tracked competition,
-// rate-limited to ~1 per 6.2s to respect the free-tier 10 req/min cap), so
-// they're done in a single combined pass (collectAllMatches) rather than
-// separate fixtures/results passes — see collectors/footballData.ts.
+// Timing note: Vercel Hobby caps function execution at 60s. Two things
+// mattered to fit inside that budget:
+//  1. football-data.org fetches: one combined fixtures+results pass per
+//     tracked competition (collectAllMatches), rate-limited to ~1 req/6.2s
+//     to respect the free-tier 10 req/min cap — six competitions still costs
+//     ~31-37s, the single biggest chunk of the budget.
+//  2. Database work: with 6 competitions over a ~24-day window there can
+//     easily be 100+ matches per run. Upserting/reading them one at a time
+//     was too slow, so DB-bound loops below run with bounded concurrency
+//     (mapWithConcurrency) instead of a plain sequential for-loop.
 
-import { collectAllMatches, splitFixturesAndResults } from "@/collectors/footballData";
+import { collectAllMatches, splitFixturesAndResults, type FdMatch } from "@/collectors/footballData";
 import { collectEloRatings } from "@/collectors/clubElo";
 import { collectOdds, impliedProbabilitiesFromOdds } from "@/collectors/oddsApi";
 import { computeMatchProbabilities, type TeamForm } from "./poissonModel";
 import { findBestEloMatch } from "@/lib/teamMatch";
 import { AGGREGATION_WEIGHTS, FORM_MATCH_COUNT } from "@/lib/config";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import {
   upsertMatch,
   saveRawPrediction,
@@ -23,6 +29,8 @@ import {
   getRawPredictionsForMatch,
 } from "@/lib/db";
 import type { RawPrediction } from "@/lib/types";
+
+const DB_CONCURRENCY = 12;
 
 export interface UpdateSummary {
   fixturesUpserted: number;
@@ -46,15 +54,20 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
     errors,
   };
 
-  // 1. Fixtures + recent results (one combined football-data.org pass) and
-  // Elo ratings, fetched concurrently.
-  const [allMatches, eloRatings] = await Promise.all([
+  // 1. Fixtures + recent results (one combined football-data.org pass),
+  // Elo ratings, and odds — all fetched concurrently (odds/Elo don't depend
+  // on football-data.org's rate-limited pass).
+  const [allMatches, eloRatings, odds] = await Promise.all([
     collectAllMatches().catch((e) => {
       errors.push(`collectAllMatches: ${e.message}`);
-      return [];
+      return [] as FdMatch[];
     }),
     collectEloRatings().catch((e) => {
       errors.push(`collectEloRatings: ${e.message}`);
+      return [];
+    }),
+    collectOdds().catch((e) => {
+      errors.push(`collectOdds: ${e.message}`);
       return [];
     }),
   ]);
@@ -67,8 +80,7 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
 
   // Upsert recent (finished) results first so the Poisson model's "form"
   // lookups have fresh data to read from the DB.
-  const matchIdByFixtureKey = new Map<string, number>();
-  for (const m of recentResults) {
+  await mapWithConcurrency(recentResults, DB_CONCURRENCY, async (m) => {
     try {
       await upsertMatch({
         fdMatchId: m.fdMatchId,
@@ -85,11 +97,11 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
     } catch (e: any) {
       errors.push(`upsert recent result ${m.homeTeam} vs ${m.awayTeam}: ${e.message}`);
     }
-  }
+  });
 
   // Upsert upcoming fixtures, attaching best-effort Elo team ids.
-  const upcomingMatchIds: { id: number; homeTeam: string; awayTeam: string }[] = [];
-  for (const m of fixtures) {
+  const matchIdByFixtureKey = new Map<string, number>();
+  const upcomingResults = await mapWithConcurrency(fixtures, DB_CONCURRENCY, async (m) => {
     try {
       const homeEloId = findBestEloMatch(m.homeTeam, eloTeamNames);
       const awayEloId = findBestEloMatch(m.awayTeam, eloTeamNames);
@@ -105,22 +117,21 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
         status: "SCHEDULED",
       });
       summary.fixturesUpserted++;
-      upcomingMatchIds.push({ id, homeTeam: m.homeTeam, awayTeam: m.awayTeam });
       matchIdByFixtureKey.set(fixtureKey(m.homeTeam, m.awayTeam, m.kickoffUtc), id);
+      return { id, homeTeam: m.homeTeam, awayTeam: m.awayTeam };
     } catch (e: any) {
       errors.push(`upsert fixture ${m.homeTeam} vs ${m.awayTeam}: ${e.message}`);
+      return null;
     }
-  }
+  });
+  const upcomingMatchIds = upcomingResults.filter(
+    (r): r is { id: number; homeTeam: string; awayTeam: string } => r !== null
+  );
 
   // 2. Odds -> implied probability, one raw_predictions row per matched fixture.
-  const odds = await collectOdds().catch((e) => {
-    errors.push(`collectOdds: ${e.message}`);
-    return [];
-  });
-
-  for (const o of odds) {
+  await mapWithConcurrency(odds, DB_CONCURRENCY, async (o) => {
     const matchId = findMatchIdForOdds(matchIdByFixtureKey, o.homeTeam, o.awayTeam, o.commenceTimeUtc);
-    if (!matchId) continue;
+    if (!matchId) return;
     const probs = impliedProbabilitiesFromOdds(o.avgHomeOdds, o.avgDrawOdds, o.avgAwayOdds);
     const pred: RawPrediction = {
       match: {
@@ -148,22 +159,31 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
     } catch (e: any) {
       errors.push(`saveRawPrediction odds ${o.homeTeam} vs ${o.awayTeam}: ${e.message}`);
     }
-  }
+  });
 
-  // 3. Poisson-Elo model for every upcoming fixture.
-  for (const match of upcomingMatchIds) {
+  // 3. Poisson-Elo model. Pre-fetch each unique team's recent form once
+  // (concurrently) instead of once per match per side, since the same team
+  // can appear in several upcoming fixtures across the lookahead window.
+  const uniqueTeams = Array.from(
+    new Set(upcomingMatchIds.flatMap((m) => [m.homeTeam, m.awayTeam]))
+  );
+  const formEntries = await mapWithConcurrency(uniqueTeams, DB_CONCURRENCY, async (team) => {
+    try {
+      return [team, await computeTeamForm(team)] as const;
+    } catch {
+      return [team, null] as const;
+    }
+  });
+  const formByTeam = new Map(formEntries);
+
+  await mapWithConcurrency(upcomingMatchIds, DB_CONCURRENCY, async (match) => {
     try {
       const homeElo = resolveElo(match.homeTeam, eloTeamNames, eloByTeam);
       const awayElo = resolveElo(match.awayTeam, eloTeamNames, eloByTeam);
-      const homeForm = await computeTeamForm(match.homeTeam);
-      const awayForm = await computeTeamForm(match.awayTeam);
+      const homeForm = formByTeam.get(match.homeTeam) ?? null;
+      const awayForm = formByTeam.get(match.awayTeam) ?? null;
 
-      const result = computeMatchProbabilities({
-        homeElo,
-        awayElo,
-        homeForm,
-        awayForm,
-      });
+      const result = computeMatchProbabilities({ homeElo, awayElo, homeForm, awayForm });
 
       const pred: RawPrediction = {
         match: {
@@ -192,17 +212,17 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
     } catch (e: any) {
       errors.push(`poisson model ${match.homeTeam} vs ${match.awayTeam}: ${e.message}`);
     }
-  }
+  });
 
   // 4. Combine raw predictions per match into the final weighted aggregate.
-  for (const match of upcomingMatchIds) {
+  await mapWithConcurrency(upcomingMatchIds, DB_CONCURRENCY, async (match) => {
     try {
       await combineAndSave(match.id);
       summary.matchesAggregated++;
     } catch (e: any) {
       errors.push(`aggregate match ${match.id}: ${e.message}`);
     }
-  }
+  });
 
   return summary;
 }

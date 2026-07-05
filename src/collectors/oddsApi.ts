@@ -47,38 +47,43 @@ function apiKey(): string {
  * credits/month free tier for a once-a-day cron.
  */
 export async function collectOdds(): Promise<OddsApiMatchOdds[]> {
-  const results: OddsApiMatchOdds[] = [];
-
-  for (const [competitionCode, sportKey] of Object.entries(COMPETITION_TO_ODDS_API_SPORT)) {
-    try {
-      const url = `${BASE_URL}/sports/${sportKey}/odds?apiKey=${apiKey()}&regions=eu&markets=h2h&oddsFormat=decimal`;
-      const res = await fetch(url, { next: { revalidate: 3600 } });
-      if (!res.ok) {
-        console.error(`[oddsApi] ${sportKey} failed: ${res.status}`);
-        continue;
+  // The Odds API's free tier is a monthly credit budget, not a per-minute
+  // rate limit, so unlike football-data.org these requests can run
+  // concurrently — that matters on Vercel Hobby's 60s function cap.
+  const perCompetition = await Promise.all(
+    Object.entries(COMPETITION_TO_ODDS_API_SPORT).map(async ([competitionCode, sportKey]) => {
+      const matches: OddsApiMatchOdds[] = [];
+      try {
+        const url = `${BASE_URL}/sports/${sportKey}/odds?apiKey=${apiKey()}&regions=eu&markets=h2h&oddsFormat=decimal`;
+        const res = await fetch(url, { next: { revalidate: 3600 } });
+        if (!res.ok) {
+          console.error(`[oddsApi] ${sportKey} failed: ${res.status}`);
+          return matches;
+        }
+        const events = await res.json();
+        for (const event of events) {
+          const averaged = averageBookmakerOdds(
+            event.bookmakers ?? [],
+            event.home_team,
+            event.away_team
+          );
+          if (!averaged) continue;
+          matches.push({
+            homeTeam: event.home_team,
+            awayTeam: event.away_team,
+            commenceTimeUtc: event.commence_time,
+            competitionCode,
+            ...averaged,
+          });
+        }
+      } catch (err) {
+        console.error(`[oddsApi] failed for ${sportKey}:`, err);
       }
-      const events = await res.json();
-      for (const event of events) {
-        const averaged = averageBookmakerOdds(
-          event.bookmakers ?? [],
-          event.home_team,
-          event.away_team
-        );
-        if (!averaged) continue;
-        results.push({
-          homeTeam: event.home_team,
-          awayTeam: event.away_team,
-          commenceTimeUtc: event.commence_time,
-          competitionCode,
-          ...averaged,
-        });
-      }
-    } catch (err) {
-      console.error(`[oddsApi] failed for ${sportKey}:`, err);
-    }
-  }
+      return matches;
+    })
+  );
 
-  return results;
+  return perCompetition.flat();
 }
 
 /**
