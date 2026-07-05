@@ -70,14 +70,25 @@ export async function getUpcomingMatches(limit = 50): Promise<
     aggAwayProb: number | null;
   })[]
 > {
-  const noFilter = await sql`
-    select m.id, m.status, m.kickoff_utc
-    from matches m
+  const test1 = await sql`
+    select m.id from matches m
     left join aggregated_predictions a on a.match_id = m.id
+    where m.status = 'SCHEDULED'
     limit 200
   `;
-  const statusOnly = noFilter.rows.filter((r: any) => r.status === "SCHEDULED");
-  console.log(`[getUpcomingMatches] DEBUG noFilterCount=${noFilter.rows.length} statusOnlyCount=${statusOnly.length}`);
+  const test2 = await sql`
+    select m.id from matches m
+    left join aggregated_predictions a on a.match_id = m.id
+    where m.status = 'SCHEDULED' and m.kickoff_utc > now() - interval '2 hours'
+    limit 200
+  `;
+  const test3 = await sql`
+    select m.id from matches m
+    left join aggregated_predictions a on a.match_id = m.id
+    where m.status = 'SCHEDULED' and m.kickoff_utc > now() - interval '2 hours'
+    limit ${200}
+  `;
+  console.log(`[getUpcomingMatches] DEBUG test1(statusOnly)=${test1.rows.length} test2(statusAndDate)=${test2.rows.length} test3(withParamLimit)=${test3.rows.length}`);
   const { rows } = await sql`
     select
       m.id, m.fd_match_id, m.competition_code, m.competition_name,
