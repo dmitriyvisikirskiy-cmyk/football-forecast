@@ -185,3 +185,37 @@ header.site-header p {
   padding: 40px 0;
   text-align: center;
 }
+
+.section-heading {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin: 0 0 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.section-heading:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.flag {
+  margin-right: 6px;
+}
+
+.result-card {
+  cursor: default;
+}
+
+.result-card:hover {
+  border-color: var(--border);
+}
+
+.score {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getMatchById, getRawPredictionsForMatch } from "@/lib/db";
+import { flagForTeam } from "@/lib/countryFlags";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,16 @@ function pct(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
 }
 
+function TeamName({ name }: { name: string }) {
+  const flag = flagForTeam(name);
+  return (
+    <>
+      {flag && <span className="flag">{flag}</span>}
+      {name}
+    </>
+  );
+}
+
 export default async function MatchDetailPage({ params }: { params: { id: string } }) {
   const id = Number(params.id);
   if (Number.isNaN(id)) notFound();
@@ -41,10 +52,16 @@ export default async function MatchDetailPage({ params }: { params: { id: string
 
       <div className="detail-header">
         <h1>
-          {match.homeTeam} vs {match.awayTeam}
+          <TeamName name={match.homeTeam} /> vs <TeamName name={match.awayTeam} />
         </h1>
         <div className="kickoff">
           {match.competitionName} &middot; {formatKickoff(match.kickoffUtc)}
+          {match.status === "FINISHED" && match.homeScore !== null && match.awayScore !== null && (
+            <>
+              {" "}
+              &middot; <span className="score">{match.homeScore} : {match.awayScore}</span>
+            </>
+          )}
         </div>
       </div>
 

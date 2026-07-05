@@ -97,6 +97,27 @@ export async function getUpcomingMatches(limit = 50): Promise<
   return sorted.map(rowToMatchWithAgg);
 }
 
+// Recently finished matches (final score already known), most recent first.
+// Same defensive pattern as getUpcomingMatches: fetch unordered and sort in
+// JS rather than adding a SQL-level ORDER BY to this shape of query.
+export async function getRecentResults(limit = 50): Promise<Match[]> {
+  const { rows } = await sql`
+    select
+      m.id, m.fd_match_id, m.competition_code, m.competition_name,
+      m.home_team, m.away_team, m.home_team_elo_id, m.away_team_elo_id,
+      m.kickoff_utc, m.status, m.home_score, m.away_score
+    from matches m
+    where m.status = 'FINISHED'
+      and m.home_score is not null and m.away_score is not null
+      and m.home_team <> 'Unknown' and m.away_team <> 'Unknown'
+  `;
+  const sorted = rows
+    .slice()
+    .sort((a: any, b: any) => new Date(b.kickoff_utc).getTime() - new Date(a.kickoff_utc).getTime())
+    .slice(0, limit);
+  return sorted.map((r: any) => rowToMatchWithAgg(r));
+}
+
 export async function getMatchById(id: number) {
   const { rows } = await sql`
     select
