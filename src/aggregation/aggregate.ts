@@ -44,6 +44,7 @@ function stageTimer() {
 
 export interface UpdateSummary {
   fixturesUpserted: number;
+  fixturesSkippedUnknownTeams: number;
   recentResultsUpserted: number;
   eloRatingsFetched: number;
   oddsMatched: number;
@@ -57,6 +58,7 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
   const errors: string[] = [];
   const summary: UpdateSummary = {
     fixturesUpserted: 0,
+    fixturesSkippedUnknownTeams: 0,
     recentResultsUpserted: 0,
     eloRatingsFetched: 0,
     oddsMatched: 0,
@@ -85,7 +87,17 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
   summary.eloRatingsFetched = eloRatings.length;
   tick(`step1 collectAllMatches(${allMatches.length}) + elo(${eloRatings.length}) + odds(${odds.length})`);
 
-  const { upcoming: fixtures, recentFinished: recentResults } = splitFixturesAndResults(allMatches);
+  const { upcoming: upcomingRaw, recentFinished: recentResults } = splitFixturesAndResults(allMatches);
+
+  // Knockout-stage fixtures whose participants aren't decided yet come back
+  // from football-data.org with placeholder team names ("Unknown"). There's
+  // nothing meaningful to predict for those, so we skip them entirely here
+  // (no upsert, no odds/Poisson lookups, no aggregation) rather than storing
+  // and displaying a prediction for two teams we don't actually know yet.
+  // They'll start flowing through normally once football-data.org resolves
+  // the real team names.
+  const fixtures = upcomingRaw.filter((m) => m.homeTeam !== "Unknown" && m.awayTeam !== "Unknown");
+  summary.fixturesSkippedUnknownTeams = upcomingRaw.length - fixtures.length;
 
   const eloTeamNames = eloRatings.map((r) => r.team);
   const eloByTeam = new Map(eloRatings.map((r) => [r.team, r.elo]));

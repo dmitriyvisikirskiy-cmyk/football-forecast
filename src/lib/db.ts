@@ -88,6 +88,7 @@ export async function getUpcomingMatches(limit = 50): Promise<
     from matches m
     left join aggregated_predictions a on a.match_id = m.id
     where m.status = 'SCHEDULED' and m.kickoff_utc > now() - interval '2 hours'
+      and m.home_team <> 'Unknown' and m.away_team <> 'Unknown'
   `;
   const sorted = rows
     .slice()
