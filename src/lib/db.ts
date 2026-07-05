@@ -70,19 +70,15 @@ export async function getUpcomingMatches(limit = 50): Promise<
     aggAwayProb: number | null;
   })[]
 > {
-  const test6 = await sql`
-    select
-      m.id, m.fd_match_id, m.competition_code, m.competition_name,
-      m.home_team, m.away_team, m.home_team_elo_id, m.away_team_elo_id,
-      m.kickoff_utc, m.status, m.home_score, m.away_score,
-      a.home_prob as agg_home_prob, a.draw_prob as agg_draw_prob, a.away_prob as agg_away_prob
-    from matches m
-    left join aggregated_predictions a on a.match_id = m.id
-    where m.status = 'SCHEDULED' and m.kickoff_utc > now() - interval '2 hours'
-    order by m.kickoff_utc asc
-    limit ${limit}
-  `;
-  console.log(`[getUpcomingMatches] DEBUG test6(exactFinalQueryFirstRun)=${test6.rows.length} limitValue=${limit} limitType=${typeof limit}`);
+  // NOTE: this query intentionally has no SQL-level ORDER BY. Combining this
+  // exact shape (LEFT JOIN + this column list + a parameterized LIMIT) with
+  // an `order by m.kickoff_utc asc` clause was verified (via a temporary,
+  // now-removed debug endpoint and repeated runtime-log inspection) to
+  // deterministically make @vercel/postgres return zero rows in production,
+  // even though the identical query without ORDER BY, or with ORDER BY but a
+  // trimmed column list, each correctly returned all matching rows. Rather
+  // than depend on a fragile driver/planner interaction we don't fully
+  // understand, we fetch unordered and sort + trim to `limit` in JS instead.
   const { rows } = await sql`
     select
       m.id, m.fd_match_id, m.competition_code, m.competition_name,
@@ -92,11 +88,12 @@ export async function getUpcomingMatches(limit = 50): Promise<
     from matches m
     left join aggregated_predictions a on a.match_id = m.id
     where m.status = 'SCHEDULED' and m.kickoff_utc > now() - interval '2 hours'
-    order by m.kickoff_utc asc
-    limit ${limit}
   `;
-  console.log(`[getUpcomingMatches] limit=${limit} rows.length=${rows.length}`);
-  return rows.map(rowToMatchWithAgg);
+  const sorted = rows
+    .slice()
+    .sort((a: any, b: any) => new Date(a.kickoff_utc).getTime() - new Date(b.kickoff_utc).getTime())
+    .slice(0, limit);
+  return sorted.map(rowToMatchWithAgg);
 }
 
 export async function getMatchById(id: number) {
