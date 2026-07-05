@@ -14,12 +14,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const [matchCount, scheduledCount, sampleMatches, rawCount, aggCount] = await Promise.all([
+  const [matchCount, scheduledCount, sampleMatches, rawCount, aggCount, upcomingQuery, dbNow] = await Promise.all([
     sql`select count(*)::int as n from matches`,
     sql`select count(*)::int as n from matches where status = 'SCHEDULED'`,
     sql`select id, competition_code, home_team, away_team, status, kickoff_utc from matches order by id desc limit 15`,
     sql`select count(*)::int as n from raw_predictions`,
     sql`select count(*)::int as n from aggregated_predictions`,
+    sql`
+      select m.id, m.home_team, m.away_team, m.status, m.kickoff_utc
+      from matches m
+      where m.status = 'SCHEDULED' and m.kickoff_utc > now() - interval '2 hours'
+      order by m.kickoff_utc asc
+      limit 20
+    `,
+    sql`select now() as n`,
   ]);
 
   return NextResponse.json({
@@ -28,6 +36,8 @@ export async function GET(request: NextRequest) {
     rawPredictions: rawCount.rows[0].n,
     aggregatedPredictions: aggCount.rows[0].n,
     sampleMatches: sampleMatches.rows,
+    upcomingQueryResult: upcomingQuery.rows,
+    dbNow: dbNow.rows[0].n,
     now: new Date().toISOString(),
   });
 }
