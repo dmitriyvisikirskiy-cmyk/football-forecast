@@ -1,10 +1,18 @@
 // Collector: football-data.org
 // Free tier: 10 requests/minute, 12 competitions. Docs: https://www.football-data.org/documentation/quickstart
 // Used as the source of truth for fixtures, results and competition metadata.
+//
+// Fetches upcoming fixtures AND recent finished results in a single request
+// per competition (one wide date range, no status filter) instead of two
+// separate passes. This matters because Vercel Hobby caps function
+// execution at 60s: two passes x 6 competitions x ~6.5s rate-limit spacing
+// would alone take ~78s and blow the budget before any DB work happens.
+// One pass x 6 competitions fits comfortably.
 
 import { FIXTURE_LOOKAHEAD_DAYS, TRACKED_COMPETITIONS } from "@/lib/config";
 
 const BASE_URL = "https://api.football-data.org/v4";
+const RECENT_RESULTS_DAYS_BACK = 30;
 
 export interface FdMatch {
   fdMatchId: number;
@@ -38,32 +46,30 @@ async function fdFetch(path: string) {
   return res.json();
 }
 
-/** Simple sequential rate limiter: football-data.org free tier allows 10 req/min. */
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function mapStatus(fdStatus: string): "SCHEDULED" | "FINISHED" | "POSTPONED" | "LIVE" {
-  if (fdStatus === "FINISHED") return "FINISHED";
-  if (fdStatus === "POSTPONED" || fdStatus === "CANCELLED" || fdStatus === "SUSPENDED") return "POSTPONED";
-  if (fdStatus === "IN_PLAY" || fdStatus === "PAUSED") return "LIVE";
-  return "SCHEDULED";
-}
-
 /**
- * Pulls upcoming fixtures (next FIXTURE_LOOKAHEAD_DAYS days) for every
- * tracked competition. One request per competition, spaced out to respect
- * the 10 req/min free-tier limit.
+ * Pulls both recently finished results (last 30 days) and upcoming fixtures
+ * (next FIXTURE_LOOKAHEAD_DAYS days) for every tracked competition, one
+ * request per competition. Rate-limited to stay under the free-tier
+ * 10 req/min cap (no sleep after the last competition, since nothing
+ * follows it).
  */
-export async function collectUpcomingFixtures(): Promise<FdMatch[]> {
-  const dateFrom = new Date().toISOString().slice(0, 10);
+export async function collectAllMatches(): Promise<FdMatch[]> {
+  const dateFrom = new Date(Date.now() - RECENT_RESULTS_DAYS_BACK * 86400_000)
+    .toISOString()
+    .slice(0, 10);
   const dateTo = new Date(Date.now() + FIXTURE_LOOKAHEAD_DAYS * 86400_000)
     .toISOString()
     .slice(0, 10);
 
   const results: FdMatch[] = [];
+  const competitions = [...TRACKED_COMPETITIONS];
 
-  for (const code of TRACKED_COMPETITIONS) {
+  for (let i = 0; i < competitions.length; i++) {
+    const code = competitions[i];
     try {
       const data = await fdFetch(
         `/competitions/${code}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`
@@ -86,45 +92,23 @@ export async function collectUpcomingFixtures(): Promise<FdMatch[]> {
       // take down the whole cron run.
       console.error(`[footballData] failed for ${code}:`, err);
     }
-    await sleep(6500); // ~9 req/min, safely under the 10 req/min cap
+    if (i < competitions.length - 1) {
+      await sleep(6200); // ~9.7 req/min, safely under the 10 req/min cap
+    }
   }
 
   return results;
 }
 
-/**
- * Pulls recently finished matches for the tracked competitions, used by the
- * Poisson model to compute each team's current scoring form.
- */
-export async function collectRecentResults(daysBack = 30): Promise<FdMatch[]> {
-  const dateFrom = new Date(Date.now() - daysBack * 86400_000).toISOString().slice(0, 10);
-  const dateTo = new Date().toISOString().slice(0, 10);
-
-  const results: FdMatch[] = [];
-
-  for (const code of TRACKED_COMPETITIONS) {
-    try {
-      const data = await fdFetch(
-        `/competitions/${code}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}&status=FINISHED`
-      );
-      for (const m of data.matches ?? []) {
-        results.push({
-          fdMatchId: m.id,
-          competitionCode: code,
-          competitionName: data.competition?.name ?? code,
-          homeTeam: m.homeTeam?.name ?? "Unknown",
-          awayTeam: m.awayTeam?.name ?? "Unknown",
-          kickoffUtc: m.utcDate,
-          status: m.status,
-          homeScore: m.score?.fullTime?.home ?? null,
-          awayScore: m.score?.fullTime?.away ?? null,
-        });
-      }
-    } catch (err) {
-      console.error(`[footballData] recent results failed for ${code}:`, err);
-    }
-    await sleep(6500);
+export function splitFixturesAndResults(matches: FdMatch[]): {
+  upcoming: FdMatch[];
+  recentFinished: FdMatch[];
+} {
+  const upcoming: FdMatch[] = [];
+  const recentFinished: FdMatch[] = [];
+  for (const m of matches) {
+    if (m.status === "FINISHED") recentFinished.push(m);
+    else if (m.status === "SCHEDULED" || m.status === "TIMED") upcoming.push(m);
   }
-
-  return results;
+  return { upcoming, recentFinished };
 }

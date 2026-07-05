@@ -2,8 +2,14 @@
 // upsert matches, compute each independent prediction, then combine them
 // into the final aggregated_predictions row per match. This is the function
 // the cron endpoint calls once a day.
+//
+// Timing note: Vercel Hobby caps function execution at 60s. football-data.org
+// fetches are the dominant cost (one request per tracked competition,
+// rate-limited to ~1 per 6.2s to respect the free-tier 10 req/min cap), so
+// they're done in a single combined pass (collectAllMatches) rather than
+// separate fixtures/results passes — see collectors/footballData.ts.
 
-import { collectUpcomingFixtures, collectRecentResults } from "@/collectors/footballData";
+import { collectAllMatches, splitFixturesAndResults } from "@/collectors/footballData";
 import { collectEloRatings } from "@/collectors/clubElo";
 import { collectOdds, impliedProbabilitiesFromOdds } from "@/collectors/oddsApi";
 import { computeMatchProbabilities, type TeamForm } from "./poissonModel";
@@ -14,6 +20,7 @@ import {
   saveRawPrediction,
   saveAggregatedPrediction,
   getRecentResultsForTeam,
+  getRawPredictionsForMatch,
 } from "@/lib/db";
 import type { RawPrediction } from "@/lib/types";
 
@@ -39,14 +46,11 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
     errors,
   };
 
-  // 1. Fixtures + recent results from football-data.org, Elo from ClubElo.
-  const [fixtures, recentResults, eloRatings] = await Promise.all([
-    collectUpcomingFixtures().catch((e) => {
-      errors.push(`collectUpcomingFixtures: ${e.message}`);
-      return [];
-    }),
-    collectRecentResults().catch((e) => {
-      errors.push(`collectRecentResults: ${e.message}`);
+  // 1. Fixtures + recent results (one combined football-data.org pass) and
+  // Elo ratings, fetched concurrently.
+  const [allMatches, eloRatings] = await Promise.all([
+    collectAllMatches().catch((e) => {
+      errors.push(`collectAllMatches: ${e.message}`);
       return [];
     }),
     collectEloRatings().catch((e) => {
@@ -55,6 +59,8 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
     }),
   ]);
   summary.eloRatingsFetched = eloRatings.length;
+
+  const { upcoming: fixtures, recentFinished: recentResults } = splitFixturesAndResults(allMatches);
 
   const eloTeamNames = eloRatings.map((r) => r.team);
   const eloByTeam = new Map(eloRatings.map((r) => [r.team, r.elo]));
@@ -202,7 +208,6 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
 }
 
 async function combineAndSave(matchId: number) {
-  const { getRawPredictionsForMatch } = await import("@/lib/db");
   const raw = await getRawPredictionsForMatch(matchId);
   if (raw.length === 0) return;
 
