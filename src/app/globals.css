@@ -1,0 +1,187 @@
+:root {
+  --bg: #0b0f14;
+  --card: #121822;
+  --border: #212b38;
+  --text: #e6edf3;
+  --muted: #8b98a5;
+  --accent: #4f9cf9;
+  --home: #4f9cf9;
+  --draw: #8b98a5;
+  --away: #f97b4f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.container {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+header.site-header {
+  padding: 24px 16px 0;
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+header.site-header h1 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+header.site-header p {
+  color: var(--muted);
+  margin: 0 0 24px;
+  font-size: 14px;
+}
+
+.competition-group {
+  margin-bottom: 28px;
+}
+
+.competition-group h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
+.match-card {
+  display: block;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.match-card:hover {
+  border-color: var(--accent);
+}
+
+.match-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.teams {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.kickoff {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.prob-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 10px;
+  background: var(--border);
+}
+
+.prob-bar .home {
+  background: var(--home);
+}
+.prob-bar .draw {
+  background: var(--draw);
+}
+.prob-bar .away {
+  background: var(--away);
+}
+
+.prob-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.prob-legend .home-val {
+  color: var(--home);
+}
+.prob-legend .draw-val {
+  color: var(--draw);
+}
+.prob-legend .away-val {
+  color: var(--away);
+}
+
+.no-prediction {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+  font-style: italic;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 16px;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.detail-header {
+  margin-bottom: 24px;
+}
+
+.detail-header h1 {
+  font-size: 24px;
+  margin: 0 0 6px;
+}
+
+.source-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.source-card h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.source-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.final-card {
+  background: linear-gradient(135deg, #172033, #101722);
+  border: 1px solid var(--accent);
+}
+
+.empty-state {
+  color: var(--muted);
+  padding: 40px 0;
+  text-align: center;
+}
