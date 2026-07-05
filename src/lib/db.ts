@@ -70,25 +70,25 @@ export async function getUpcomingMatches(limit = 50): Promise<
     aggAwayProb: number | null;
   })[]
 > {
-  const test1 = await sql`
-    select m.id from matches m
-    left join aggregated_predictions a on a.match_id = m.id
-    where m.status = 'SCHEDULED'
-    limit 200
-  `;
-  const test2 = await sql`
+  const test4 = await sql`
     select m.id from matches m
     left join aggregated_predictions a on a.match_id = m.id
     where m.status = 'SCHEDULED' and m.kickoff_utc > now() - interval '2 hours'
-    limit 200
+    order by m.kickoff_utc asc
+    limit ${200}
   `;
-  const test3 = await sql`
-    select m.id from matches m
+  const test5 = await sql`
+    select
+      m.id, m.fd_match_id, m.competition_code, m.competition_name,
+      m.home_team, m.away_team, m.home_team_elo_id, m.away_team_elo_id,
+      m.kickoff_utc, m.status, m.home_score, m.away_score,
+      a.home_prob as agg_home_prob, a.draw_prob as agg_draw_prob, a.away_prob as agg_away_prob
+    from matches m
     left join aggregated_predictions a on a.match_id = m.id
     where m.status = 'SCHEDULED' and m.kickoff_utc > now() - interval '2 hours'
     limit ${200}
   `;
-  console.log(`[getUpcomingMatches] DEBUG test1(statusOnly)=${test1.rows.length} test2(statusAndDate)=${test2.rows.length} test3(withParamLimit)=${test3.rows.length}`);
+  console.log(`[getUpcomingMatches] DEBUG test4(withOrderBy)=${test4.rows.length} test5(fullColumnsNoOrder)=${test5.rows.length}`);
   const { rows } = await sql`
     select
       m.id, m.fd_match_id, m.competition_code, m.competition_name,
