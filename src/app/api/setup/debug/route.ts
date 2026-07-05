@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const [matchCount, scheduledCount, sampleMatches, rawCount, aggCount, upcomingQuery, dbNow] = await Promise.all([
+  const testLimit = 100;
+  const [matchCount, scheduledCount, sampleMatches, rawCount, aggCount, upcomingQuery, dbNow, exactQuery] = await Promise.all([
     sql`select count(*)::int as n from matches`,
     sql`select count(*)::int as n from matches where status = 'SCHEDULED'`,
     sql`select id, competition_code, home_team, away_team, status, kickoff_utc from matches order by id desc limit 15`,
@@ -28,6 +29,18 @@ export async function GET(request: NextRequest) {
       limit 20
     `,
     sql`select now() as n`,
+    sql`
+      select
+        m.id, m.fd_match_id, m.competition_code, m.competition_name,
+        m.home_team, m.away_team, m.home_team_elo_id, m.away_team_elo_id,
+        m.kickoff_utc, m.status, m.home_score, m.away_score,
+        a.home_prob as agg_home_prob, a.draw_prob as agg_draw_prob, a.away_prob as agg_away_prob
+      from matches m
+      left join aggregated_predictions a on a.match_id = m.id
+      where m.status = 'SCHEDULED' and m.kickoff_utc > now() - interval '2 hours'
+      order by m.kickoff_utc asc
+      limit ${testLimit}
+    `,
   ]);
 
   return NextResponse.json({
@@ -37,6 +50,8 @@ export async function GET(request: NextRequest) {
     aggregatedPredictions: aggCount.rows[0].n,
     sampleMatches: sampleMatches.rows,
     upcomingQueryResult: upcomingQuery.rows,
+    exactQueryResultCount: exactQuery.rows.length,
+    exactQueryResult: exactQuery.rows,
     dbNow: dbNow.rows[0].n,
     now: new Date().toISOString(),
   });
