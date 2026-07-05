@@ -32,6 +32,16 @@ import type { RawPrediction } from "@/lib/types";
 
 const DB_CONCURRENCY = 12;
 
+function stageTimer() {
+  const start = Date.now();
+  let last = start;
+  return (label: string) => {
+    const now = Date.now();
+    console.log(`[cron timing] ${label}: +${now - last}ms (total ${now - start}ms)`);
+    last = now;
+  };
+}
+
 export interface UpdateSummary {
   fixturesUpserted: number;
   recentResultsUpserted: number;
@@ -43,6 +53,7 @@ export interface UpdateSummary {
 }
 
 export async function runFullUpdate(): Promise<UpdateSummary> {
+  const tick = stageTimer();
   const errors: string[] = [];
   const summary: UpdateSummary = {
     fixturesUpserted: 0,
@@ -72,6 +83,7 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
     }),
   ]);
   summary.eloRatingsFetched = eloRatings.length;
+  tick(`step1 collectAllMatches(${allMatches.length}) + elo(${eloRatings.length}) + odds(${odds.length})`);
 
   const { upcoming: fixtures, recentFinished: recentResults } = splitFixturesAndResults(allMatches);
 
@@ -98,6 +110,7 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
       errors.push(`upsert recent result ${m.homeTeam} vs ${m.awayTeam}: ${e.message}`);
     }
   });
+  tick(`upsert recentResults(${recentResults.length})`);
 
   // Upsert upcoming fixtures, attaching best-effort Elo team ids.
   const matchIdByFixtureKey = new Map<string, number>();
@@ -127,6 +140,7 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
   const upcomingMatchIds = upcomingResults.filter(
     (r): r is { id: number; homeTeam: string; awayTeam: string } => r !== null
   );
+  tick(`upsert fixtures(${fixtures.length})`);
 
   // 2. Odds -> implied probability, one raw_predictions row per matched fixture.
   await mapWithConcurrency(odds, DB_CONCURRENCY, async (o) => {
@@ -160,6 +174,7 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
       errors.push(`saveRawPrediction odds ${o.homeTeam} vs ${o.awayTeam}: ${e.message}`);
     }
   });
+  tick(`match+save odds(${odds.length})`);
 
   // 3. Poisson-Elo model. Pre-fetch each unique team's recent form once
   // (concurrently) instead of once per match per side, since the same team
@@ -175,6 +190,7 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
     }
   });
   const formByTeam = new Map(formEntries);
+  tick(`form lookups(${uniqueTeams.length} teams)`);
 
   await mapWithConcurrency(upcomingMatchIds, DB_CONCURRENCY, async (match) => {
     try {
@@ -214,6 +230,8 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
     }
   });
 
+  tick(`poisson compute+save(${upcomingMatchIds.length})`);
+
   // 4. Combine raw predictions per match into the final weighted aggregate.
   await mapWithConcurrency(upcomingMatchIds, DB_CONCURRENCY, async (match) => {
     try {
@@ -224,6 +242,7 @@ export async function runFullUpdate(): Promise<UpdateSummary> {
     }
   });
 
+  tick("combine+save aggregated");
   return summary;
 }
 
