@@ -70,14 +70,7 @@ export async function getUpcomingMatches(limit = 50): Promise<
     aggAwayProb: number | null;
   })[]
 > {
-  const test4 = await sql`
-    select m.id from matches m
-    left join aggregated_predictions a on a.match_id = m.id
-    where m.status = 'SCHEDULED' and m.kickoff_utc > now() - interval '2 hours'
-    order by m.kickoff_utc asc
-    limit ${200}
-  `;
-  const test5 = await sql`
+  const test6 = await sql`
     select
       m.id, m.fd_match_id, m.competition_code, m.competition_name,
       m.home_team, m.away_team, m.home_team_elo_id, m.away_team_elo_id,
@@ -86,9 +79,10 @@ export async function getUpcomingMatches(limit = 50): Promise<
     from matches m
     left join aggregated_predictions a on a.match_id = m.id
     where m.status = 'SCHEDULED' and m.kickoff_utc > now() - interval '2 hours'
-    limit ${200}
+    order by m.kickoff_utc asc
+    limit ${limit}
   `;
-  console.log(`[getUpcomingMatches] DEBUG test4(withOrderBy)=${test4.rows.length} test5(fullColumnsNoOrder)=${test5.rows.length}`);
+  console.log(`[getUpcomingMatches] DEBUG test6(exactFinalQueryFirstRun)=${test6.rows.length} limitValue=${limit} limitType=${typeof limit}`);
   const { rows } = await sql`
     select
       m.id, m.fd_match_id, m.competition_code, m.competition_name,
