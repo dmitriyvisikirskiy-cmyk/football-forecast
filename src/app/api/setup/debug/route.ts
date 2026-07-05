@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
+import { getUpcomingMatches } from "@/lib/db";
 
 // Temporary debug endpoint: dumps counts + a few sample rows from each
 // table so we can see what the cron run actually persisted. Protected by
@@ -54,5 +55,6 @@ export async function GET(request: NextRequest) {
     exactQueryResult: exactQuery.rows,
     dbNow: dbNow.rows[0].n,
     now: new Date().toISOString(),
+    realFunctionResult: await getUpcomingMatches(100),
   });
 }
