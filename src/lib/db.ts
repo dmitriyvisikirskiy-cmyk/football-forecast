@@ -70,9 +70,14 @@ export async function getUpcomingMatches(limit = 50): Promise<
     aggAwayProb: number | null;
   })[]
 > {
-  const totalCheck = await sql`select count(*)::int as n from matches`;
-  const scheduledCheck = await sql`select count(*)::int as n from matches where status = 'SCHEDULED'`;
-  console.log(`[getUpcomingMatches] DEBUG totalMatches=${totalCheck.rows[0].n} scheduledMatches=${scheduledCheck.rows[0].n}`);
+  const noFilter = await sql`
+    select m.id, m.status, m.kickoff_utc
+    from matches m
+    left join aggregated_predictions a on a.match_id = m.id
+    limit 200
+  `;
+  const statusOnly = noFilter.rows.filter((r: any) => r.status === "SCHEDULED");
+  console.log(`[getUpcomingMatches] DEBUG noFilterCount=${noFilter.rows.length} statusOnlyCount=${statusOnly.length}`);
   const { rows } = await sql`
     select
       m.id, m.fd_match_id, m.competition_code, m.competition_name,
