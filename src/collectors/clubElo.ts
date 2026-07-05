@@ -14,14 +14,21 @@ const BASE_URL = "http://api.clubelo.com";
  */
 export async function collectEloRatings(date = new Date()): Promise<EloRating[]> {
   const dateStr = date.toISOString().slice(0, 10);
-  const res = await fetch(`${BASE_URL}/${dateStr}`, {
-    next: { revalidate: 3600 },
-  });
-  if (!res.ok) {
-    throw new Error(`ClubElo fetch failed: ${res.status}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(`${BASE_URL}/${dateStr}`, {
+      next: { revalidate: 3600 },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`ClubElo fetch failed: ${res.status}`);
+    }
+    const csv = await res.text();
+    return parseEloCsv(csv);
+  } finally {
+    clearTimeout(timeout);
   }
-  const csv = await res.text();
-  return parseEloCsv(csv);
 }
 
 function parseEloCsv(csv: string): EloRating[] {

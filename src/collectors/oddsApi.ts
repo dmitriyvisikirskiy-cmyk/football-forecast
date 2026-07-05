@@ -53,9 +53,11 @@ export async function collectOdds(): Promise<OddsApiMatchOdds[]> {
   const perCompetition = await Promise.all(
     Object.entries(COMPETITION_TO_ODDS_API_SPORT).map(async ([competitionCode, sportKey]) => {
       const matches: OddsApiMatchOdds[] = [];
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
       try {
         const url = `${BASE_URL}/sports/${sportKey}/odds?apiKey=${apiKey()}&regions=eu&markets=h2h&oddsFormat=decimal`;
-        const res = await fetch(url, { next: { revalidate: 3600 } });
+        const res = await fetch(url, { next: { revalidate: 3600 }, signal: controller.signal });
         if (!res.ok) {
           console.error(`[oddsApi] ${sportKey} failed: ${res.status}`);
           return matches;
@@ -78,6 +80,8 @@ export async function collectOdds(): Promise<OddsApiMatchOdds[]> {
         }
       } catch (err) {
         console.error(`[oddsApi] failed for ${sportKey}:`, err);
+      } finally {
+        clearTimeout(timeout);
       }
       return matches;
     })

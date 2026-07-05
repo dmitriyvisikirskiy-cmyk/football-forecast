@@ -33,17 +33,24 @@ function apiKey(): string {
 }
 
 async function fdFetch(path: string) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "X-Auth-Token": apiKey() },
-    // football-data.org data changes at most a few times a day; let the
-    // platform cache responses for a while between cron runs.
-    next: { revalidate: 3600 },
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`football-data.org ${path} failed: ${res.status} ${body}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      headers: { "X-Auth-Token": apiKey() },
+      // football-data.org data changes at most a few times a day; let the
+      // platform cache responses for a while between cron runs.
+      next: { revalidate: 3600 },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`football-data.org ${path} failed: ${res.status} ${body}`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timeout);
   }
-  return res.json();
 }
 
 function sleep(ms: number) {
