@@ -25,6 +25,9 @@ export const TRACKED_COMPETITIONS = [
   "SA", // Serie A
   "FL1", // Ligue 1
   "CL", // UEFA Champions League
+  "WC", // FIFA World Cup — included because domestic leagues run a summer
+  // break roughly late May-August; the World Cup (and Euros, in years it
+  // runs) is often the only top-level football actually being played then.
 ] as const;
 
 // How many days ahead to pull upcoming fixtures for.

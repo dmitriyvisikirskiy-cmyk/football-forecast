@@ -21,6 +21,7 @@ const COMPETITION_TO_ODDS_API_SPORT: Record<string, string> = {
   SA: "soccer_italy_serie_a",
   FL1: "soccer_france_ligue_one",
   CL: "soccer_uefa_champs_league",
+  WC: "soccer_fifa_world_cup",
 };
 
 export interface OddsApiMatchOdds {

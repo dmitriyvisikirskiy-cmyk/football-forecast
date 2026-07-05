@@ -15,7 +15,7 @@ const BASE_URL = "http://api.clubelo.com";
 export async function collectEloRatings(date = new Date()): Promise<EloRating[]> {
   const dateStr = date.toISOString().slice(0, 10);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 25000); // ClubElo can be slow/flaky; runs concurrently with the longer football-data.org pass anyway
   try {
     const res = await fetch(`${BASE_URL}/${dateStr}`, {
       next: { revalidate: 3600 },
