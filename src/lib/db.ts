@@ -82,6 +82,7 @@ export async function getUpcomingMatches(limit = 50): Promise<
     order by m.kickoff_utc asc
     limit ${limit}
   `;
+  console.log(`[getUpcomingMatches] limit=${limit} rows.length=${rows.length}`);
   return rows.map(rowToMatchWithAgg);
 }
 
