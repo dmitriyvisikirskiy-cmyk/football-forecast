@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 function formatKickoff(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleString("en-GB", {
+  return d.toLocaleString("pl-PL", {
     weekday: "short",
     day: "2-digit",
     month: "short",
@@ -27,9 +27,9 @@ export default async function HomePage() {
     return (
       <main className="container">
         <div className="empty-state">
-          Database isn&apos;t reachable yet ({dbError}). Once POSTGRES_URL is
-          configured and the schema is migrated, upcoming matches will show up
-          here.
+          Baza danych jest jeszcze niedostępna ({dbError}). Gdy tylko POSTGRES_URL
+          zostanie skonfigurowany, a schemat zmigrowany, nadchodzące mecze pojawią
+          się tutaj.
         </div>
       </main>
     );
@@ -39,8 +39,8 @@ export default async function HomePage() {
     return (
       <main className="container">
         <div className="empty-state">
-          No upcoming matches yet. Predictions populate once the daily cron
-          job (<code>/api/cron/update</code>) has run at least once.
+          Brak nadchodzących meczów z ustalonymi drużynami. Prognozy pojawią się,
+          gdy tylko codzienne zadanie cron (<code>/api/cron/update</code>) je znajdzie.
         </div>
       </main>
     );
@@ -76,13 +76,13 @@ export default async function HomePage() {
                     <div className="away" style={{ width: `${(m.aggAwayProb ?? 0) * 100}%` }} />
                   </div>
                   <div className="prob-legend">
-                    <span className="home-val">H {(m.aggHomeProb * 100).toFixed(0)}%</span>
-                    <span className="draw-val">D {((m.aggDrawProb ?? 0) * 100).toFixed(0)}%</span>
-                    <span className="away-val">A {((m.aggAwayProb ?? 0) * 100).toFixed(0)}%</span>
+                    <span className="home-val">1 {(m.aggHomeProb * 100).toFixed(0)}%</span>
+                    <span className="draw-val">X {((m.aggDrawProb ?? 0) * 100).toFixed(0)}%</span>
+                    <span className="away-val">2 {((m.aggAwayProb ?? 0) * 100).toFixed(0)}%</span>
                   </div>
                 </>
               ) : (
-                <div className="no-prediction">No prediction yet — waiting for next cron run.</div>
+                <div className="no-prediction">Brak jeszcze prognozy — czekamy na kolejne uruchomienie crona.</div>
               )}
             </a>
           ))}

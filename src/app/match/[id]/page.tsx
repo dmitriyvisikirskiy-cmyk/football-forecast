@@ -4,13 +4,13 @@ import { getMatchById, getRawPredictionsForMatch } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 const SOURCE_LABELS: Record<string, string> = {
-  odds_api: "Bookmaker odds (The Odds API)",
-  poisson_elo_model: "Poisson model (ClubElo + recent form)",
+  odds_api: "Kursy bukmacherskie (The Odds API)",
+  poisson_elo_model: "Model Poissona (ClubElo + ostatnia forma)",
 };
 
 function formatKickoff(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleString("en-GB", {
+  return d.toLocaleString("pl-PL", {
     weekday: "long",
     day: "2-digit",
     month: "long",
@@ -36,7 +36,7 @@ export default async function MatchDetailPage({ params }: { params: { id: string
   return (
     <main className="container">
       <a className="back-link" href="/">
-        &larr; Back to all matches
+        &larr; Powrót do wszystkich meczów
       </a>
 
       <div className="detail-header">
@@ -50,20 +50,20 @@ export default async function MatchDetailPage({ params }: { params: { id: string
 
       {match.aggHomeProb !== null && (
         <div className="source-card final-card">
-          <h3>Final aggregated prediction</h3>
+          <h3>Ostateczna zagregowana prognoza</h3>
           <div className="prob-bar">
             <div className="home" style={{ width: `${match.aggHomeProb * 100}%` }} />
             <div className="draw" style={{ width: `${(match.aggDrawProb ?? 0) * 100}%` }} />
             <div className="away" style={{ width: `${(match.aggAwayProb ?? 0) * 100}%` }} />
           </div>
           <div className="prob-legend">
-            <span className="home-val">Home {pct(match.aggHomeProb)}</span>
-            <span className="draw-val">Draw {pct(match.aggDrawProb ?? 0)}</span>
-            <span className="away-val">Away {pct(match.aggAwayProb ?? 0)}</span>
+            <span className="home-val">1 (gospodarze) {pct(match.aggHomeProb)}</span>
+            <span className="draw-val">X (remis) {pct(match.aggDrawProb ?? 0)}</span>
+            <span className="away-val">2 (goście) {pct(match.aggAwayProb ?? 0)}</span>
           </div>
           {match.aggWeights && (
             <div className="source-meta">
-              Weights used: {Object.entries(match.aggWeights as Record<string, number>)
+              Użyte wagi: {Object.entries(match.aggWeights as Record<string, number>)
                 .map(([k, v]) => `${SOURCE_LABELS[k] ?? k} ${(v * 100).toFixed(0)}%`)
                 .join(" · ")}
             </div>
@@ -72,11 +72,11 @@ export default async function MatchDetailPage({ params }: { params: { id: string
       )}
 
       <h2 style={{ fontSize: 14, textTransform: "uppercase", color: "#8b98a5", margin: "24px 0 10px" }}>
-        What each source says
+        Co mówi każde źródło
       </h2>
 
       {rawPredictions.length === 0 && (
-        <div className="no-prediction">No source data yet — waiting for the next cron run.</div>
+        <div className="no-prediction">Brak jeszcze danych źródłowych — czekamy na kolejne uruchomienie crona.</div>
       )}
 
       {rawPredictions.map((p) => (
@@ -88,29 +88,29 @@ export default async function MatchDetailPage({ params }: { params: { id: string
             <div className="away" style={{ width: `${p.awayProb * 100}%` }} />
           </div>
           <div className="prob-legend">
-            <span className="home-val">Home {pct(p.homeProb)}</span>
-            <span className="draw-val">Draw {pct(p.drawProb)}</span>
-            <span className="away-val">Away {pct(p.awayProb)}</span>
+            <span className="home-val">1 (gospodarze) {pct(p.homeProb)}</span>
+            <span className="draw-val">X (remis) {pct(p.drawProb)}</span>
+            <span className="away-val">2 (goście) {pct(p.awayProb)}</span>
           </div>
           {p.meta && (
             <div className="source-meta">
               {p.source === "odds_api" && (
                 <>
-                  Avg odds — Home {(p.meta as any).avgHomeOdds?.toFixed(2)} · Draw{" "}
-                  {(p.meta as any).avgDrawOdds?.toFixed(2) ?? "—"} · Away{" "}
-                  {(p.meta as any).avgAwayOdds?.toFixed(2)} ({(p.meta as any).bookmakerCount} bookmakers)
+                  Śr. kursy — Gospodarze {(p.meta as any).avgHomeOdds?.toFixed(2)} · Remis{" "}
+                  {(p.meta as any).avgDrawOdds?.toFixed(2) ?? "—"} · Goście{" "}
+                  {(p.meta as any).avgAwayOdds?.toFixed(2)} ({(p.meta as any).bookmakerCount} bukmacherów)
                 </>
               )}
               {p.source === "poisson_elo_model" && (
                 <>
-                  Elo — Home {(p.meta as any).homeElo ?? "n/a"} · Away {(p.meta as any).awayElo ?? "n/a"}
-                  {" · "}Expected goals — {(p.meta as any).lambdaHome?.toFixed(2)} :{" "}
+                  Elo — Gospodarze {(p.meta as any).homeElo ?? "b/d"} · Goście {(p.meta as any).awayElo ?? "b/d"}
+                  {" · "}Oczekiwane gole — {(p.meta as any).lambdaHome?.toFixed(2)} :{" "}
                   {(p.meta as any).lambdaAway?.toFixed(2)}
                 </>
               )}
             </div>
           )}
-          <div className="source-meta">Fetched: {new Date(p.fetchedAt).toLocaleString()}</div>
+          <div className="source-meta">Pobrano: {new Date(p.fetchedAt).toLocaleString("pl-PL")}</div>
         </div>
       ))}
     </main>
