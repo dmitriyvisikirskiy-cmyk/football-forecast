@@ -70,6 +70,9 @@ export async function getUpcomingMatches(limit = 50): Promise<
     aggAwayProb: number | null;
   })[]
 > {
+  const totalCheck = await sql`select count(*)::int as n from matches`;
+  const scheduledCheck = await sql`select count(*)::int as n from matches where status = 'SCHEDULED'`;
+  console.log(`[getUpcomingMatches] DEBUG totalMatches=${totalCheck.rows[0].n} scheduledMatches=${scheduledCheck.rows[0].n}`);
   const { rows } = await sql`
     select
       m.id, m.fd_match_id, m.competition_code, m.competition_name,
